@@ -81,6 +81,7 @@ impl DeviceTask {
         Opcode::Standby,
         Opcode::RoutingChange,
         Opcode::RequestActiveSource,
+        Opcode::FeatureAbort,
     ];
 
     pub async fn new(
@@ -408,6 +409,7 @@ impl DeviceTask {
                 }
                 None
             }
+            MessageData::Valid(Message::FeatureAbort { .. }) => None,
             _ if envelope.destination != LogicalAddress::Broadcast => {
                 let opcode = envelope.message.opcode();
                 if let Some(handler) = self.system.get_message_handler(opcode).await {
