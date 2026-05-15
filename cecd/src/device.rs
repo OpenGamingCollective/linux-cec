@@ -1079,6 +1079,22 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_abort_no_abort() {
+        let test = setup_basic_test().await.unwrap();
+        tx_message(
+            &test.dev,
+            Message::FeatureAbort {
+                opcode: Opcode::FeatureAbort as u8,
+                abort_reason: AbortReason::UnrecognizedOp,
+            },
+            LogicalAddress::Tv,
+        )
+        .await;
+
+        assert_eq!(rx_message(&test.dev).await, None);
+    }
+
+    #[tokio::test]
     async fn test_give_device_power_status() {
         let test = setup_basic_test().await.unwrap();
         tx_message(
