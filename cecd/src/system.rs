@@ -66,7 +66,9 @@ trait LoginManager {
 #[derive(Debug, Clone)]
 pub(crate) enum SystemMessage {
     Wake { wake_tv: bool, from_standby: bool },
+    WakeContinue,
     Standby { standby_tv: bool, force: bool },
+    SetActive(bool),
     ReloadConfig,
     ReconfigureConnector(ConnectorInfo),
 }
@@ -617,6 +619,11 @@ impl SystemHandle {
                 from_standby: false,
             })
             .await;
+    }
+
+    pub(crate) async fn wake_continue(&self) {
+        let mut system = self.lock().await;
+        system.send_message(SystemMessage::WakeContinue).await;
     }
 
     pub(crate) async fn standby_all(&self, force: bool) {

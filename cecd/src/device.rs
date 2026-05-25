@@ -50,6 +50,7 @@ pub struct DeviceTask {
     path: OwnedObjectPath,
     log_addr_try: i32,
     awaiting_wake: bool,
+    wake_try: i32,
     poller: AsyncDevicePoller,
     active: bool,
     connector: Option<DrmConnector>,
@@ -77,6 +78,7 @@ impl DeviceTask {
         Opcode::GiveDevicePowerStatus,
         Opcode::UserControlPressed,
         Opcode::UserControlReleased,
+        Opcode::ActiveSource,
         Opcode::SetStreamPath,
         Opcode::Standby,
         Opcode::RoutingChange,
@@ -119,6 +121,7 @@ impl DeviceTask {
             path,
             log_addr_try: LOG_ADDR_RETRIES,
             awaiting_wake: false,
+            wake_try: 0,
             poller,
             active: false,
             connector,
@@ -343,9 +346,20 @@ impl DeviceTask {
                 }
                 None
             }
+            MessageData::Valid(Message::ActiveSource { address }) => {
+                let this_address = self.device.lock().await.get_physical_address().await?;
+                if address == this_address {
+                    self.awaiting_wake = false;
+                    self.set_active(true).await?;
+                } else {
+                    self.set_active(false).await?;
+                }
+                None
+            }
             MessageData::Valid(Message::SetStreamPath { address }) => {
                 let this_address = self.device.lock().await.get_physical_address().await?;
                 if address == this_address {
+                    self.awaiting_wake = false;
                     self.set_active(true).await?;
                     Some((
                         Message::ActiveSource {
@@ -434,45 +448,72 @@ impl DeviceTask {
     }
 
     async fn wake(&mut self) -> Result<()> {
-        self.device.lock().await.wake(false, false).await?;
+        match self.device.lock().await.wake(false, false).await {
+            Ok(()) | Err(Error::TxError(TxError::Nack)) => (),
+            Err(e) => return Err(e.into()),
+        }
         self.awaiting_wake = true;
-        for _ in 0..WAKE_TRIES {
-            let result = self.device.lock().await.set_active_source(None).await;
-            match result {
-                Ok(()) => {
-                    if !self.awaiting_wake {
-                        return Ok(());
-                    }
+        self.wake_try = 0;
+        self.wake_continue().await
+    }
+
+    async fn wake_continue(&mut self) -> Result<()> {
+        if !self.awaiting_wake {
+            debug!("Wake already confirmed before continuation");
+            return Ok(());
+        }
+
+        let result = self.device.lock().await.set_active_source(None).await;
+        match result {
+            Ok(()) => {
+                self.set_active(true).await?;
+                if !self.awaiting_wake {
+                    debug!("Wake confirmed on attempt {}", self.wake_try);
+                    return Ok(());
                 }
-                Err(Error::NoLogicalAddress) => {
-                    debug!("Lost logical address. Retrying configuring.");
-                    match self
-                        .system
-                        .lock()
-                        .await
-                        .configure_dev(self.device.clone(), self.connector.as_ref())
-                        .await
-                    {
-                        Ok(connector) => self.connector = connector,
-                        Err(err) => {
-                            if matches!(err.downcast::<Error>(), Ok(Error::Disconnected)) {
-                                self.awaiting_wake = false;
-                                debug!("Device was disconnected.");
-                                return Err(Error::Disconnected.into());
-                            }
+            }
+            Err(Error::NoLogicalAddress) => {
+                debug!("Lost logical address. Retrying configuring.");
+                match self
+                    .system
+                    .lock()
+                    .await
+                    .configure_dev(self.device.clone(), self.connector.as_ref())
+                    .await
+                {
+                    Ok(connector) => self.connector = connector,
+                    Err(err) => {
+                        if matches!(err.downcast::<Error>(), Ok(Error::Disconnected)) {
+                            self.awaiting_wake = false;
+                            debug!("Device was disconnected.");
+                            return Err(Error::Disconnected.into());
                         }
                     }
-                    continue;
                 }
-                Err(Error::Disconnected) => {
-                    self.awaiting_wake = false;
-                    result?;
-                }
-                Err(e) => warn!("Failed to activate source: {e}"),
             }
-            sleep(WAKE_DELAY).await;
+            Err(Error::Disconnected) => {
+                self.awaiting_wake = false;
+                result?;
+            }
+            Err(e) => warn!("Failed to activate source: {e}"),
         }
-        info!("TV did not respond to wake immediately");
+
+        self.wake_try += 1;
+        if self.wake_try >= WAKE_TRIES {
+            self.awaiting_wake = false;
+            if self.active {
+                debug!("Wake retry limit reached but device is active");
+            } else {
+                info!("TV did not respond to wake immediately");
+            }
+            return Ok(());
+        }
+
+        let system = self.system.clone();
+        spawn(async move {
+            sleep(WAKE_DELAY).await;
+            system.wake_continue().await;
+        });
         Ok(())
     }
 
@@ -513,14 +554,35 @@ impl DeviceTask {
                 Ok(())
             }
             SystemMessage::Standby { standby_tv, force } => {
-                let device = self.device.lock().await;
-                let address = device.get_physical_address().await?;
-                device
-                    .tx_message(&Message::InactiveSource { address }, LogicalAddress::Tv)
-                    .await?;
-                if force || (self.active && standby_tv) {
-                    device.standby(LogicalAddress::Tv).await?;
+                {
+                    let device = self.device.lock().await;
+                    let address = device.get_physical_address().await?;
+                    match device
+                        .tx_message(&Message::InactiveSource { address }, LogicalAddress::Tv)
+                        .await
+                    {
+                        Ok(_) | Err(Error::TxError(TxError::Nack)) => (),
+                        Err(e) => return Err(e.into()),
+                    }
+                    if force || (self.active && standby_tv) {
+                        device.standby(LogicalAddress::Tv).await?;
+                    }
                 }
+                self.awaiting_wake = false;
+                self.set_active(false).await?;
+                Ok(())
+            }
+            SystemMessage::SetActive(active) => {
+                self.awaiting_wake = false;
+                self.set_active(active).await?;
+                Ok(())
+            }
+            SystemMessage::WakeContinue => {
+                if !self.awaiting_wake {
+                    debug!("WakeContinue received but not awaiting wake");
+                    return Ok(());
+                }
+                self.wake_continue().await?;
                 Ok(())
             }
             SystemMessage::ReloadConfig => {
@@ -837,7 +899,7 @@ mod test {
     use input_linux::{EventKind, Key, KeyEvent, KeyState};
     use linux_cec::device::Capabilities;
     use linux_cec::message::Opcode;
-    use linux_cec::{LogicalAddressType, PhysicalAddress};
+    use linux_cec::{LogicalAddressType, PhysicalAddress, TxError};
     use std::iter::repeat_n;
     use std::num::ParseIntError;
     use std::time::Duration;
@@ -1014,6 +1076,47 @@ mod test {
                 LogicalAddress::Tv
             )
         );
+        assert_eq!(
+            rx_message(&test.dev).await.unwrap(),
+            (Message::Standby {}, LogicalAddress::Tv)
+        );
+        assert!(rx_message(&test.dev).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_system_message_standby_ignores_inactive_source_nack() {
+        let test = setup_basic_test().await.unwrap();
+        tx_message(
+            &test.dev,
+            Message::RoutingChange {
+                new_address: PhysicalAddress::from(0x1000),
+                original_address: PhysicalAddress::from(0x0),
+            },
+            LogicalAddress::Tv,
+        )
+        .await;
+        test.dev
+            .lock()
+            .await
+            .queue_tx_error(Error::TxError(TxError::Nack))
+            .await;
+
+        let interface: InterfaceRef<CecDevice> = test
+            .connection
+            .object_server()
+            .interface("/com/steampowered/CecDaemon1/Devices/Null")
+            .await
+            .unwrap();
+        {
+            let dev = interface.get_mut().await;
+            dev.send_system_message(SystemMessage::Standby {
+                standby_tv: true,
+                force: false,
+            })
+            .await
+            .unwrap();
+        }
+
         assert_eq!(
             rx_message(&test.dev).await.unwrap(),
             (Message::Standby {}, LogicalAddress::Tv)
@@ -1641,6 +1744,96 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_active_source_changed() {
+        let test = setup_basic_test().await.unwrap();
+        let proxy = CecDevice1Proxy::builder(&test.connection)
+            .path("/com/steampowered/CecDaemon1/Devices/Null")
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+        let mut receiver = proxy.receive_active_changed().await;
+
+        tx_message(
+            &test.dev,
+            Message::ActiveSource {
+                address: PhysicalAddress::from(0x1000),
+            },
+            LogicalAddress::PlaybackDevice2,
+        )
+        .await;
+
+        assert!(receiver.next().await.unwrap().get().await.unwrap());
+        assert!(proxy.active().await.unwrap());
+
+        tx_message(
+            &test.dev,
+            Message::ActiveSource {
+                address: PhysicalAddress::from(0x2000),
+            },
+            LogicalAddress::PlaybackDevice2,
+        )
+        .await;
+
+        assert!(!receiver.next().await.unwrap().get().await.unwrap());
+        assert!(!proxy.active().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_set_active_source_marks_active_and_allows_standby() {
+        let test = setup_basic_test().await.unwrap();
+        let proxy = CecDevice1Proxy::builder(&test.connection)
+            .path("/com/steampowered/CecDaemon1/Devices/Null")
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        proxy.set_active_source(-1).await.unwrap();
+        assert_eq!(
+            rx_message(&test.dev).await.unwrap(),
+            (
+                Message::ActiveSource {
+                    address: PhysicalAddress::from(0x1000)
+                },
+                LogicalAddress::Broadcast
+            )
+        );
+        assert!(proxy.active().await.unwrap());
+
+        let interface: InterfaceRef<CecDevice> = test
+            .connection
+            .object_server()
+            .interface("/com/steampowered/CecDaemon1/Devices/Null")
+            .await
+            .unwrap();
+        {
+            let dev = interface.get_mut().await;
+            dev.send_system_message(SystemMessage::Standby {
+                standby_tv: true,
+                force: false,
+            })
+            .await
+            .unwrap();
+        }
+
+        assert_eq!(
+            rx_message(&test.dev).await.unwrap(),
+            (
+                Message::InactiveSource {
+                    address: PhysicalAddress::from(0x1000)
+                },
+                LogicalAddress::Tv
+            )
+        );
+        assert_eq!(
+            rx_message(&test.dev).await.unwrap(),
+            (Message::Standby {}, LogicalAddress::Tv)
+        );
+        assert!(!proxy.active().await.unwrap());
+    }
+
+    #[tokio::test]
     async fn test_no_audio_system() {
         let test = setup_basic_test().await.unwrap();
 
@@ -1778,6 +1971,42 @@ mod test {
             (
                 Message::ReportPowerStatus {
                     status: PowerStatus::On
+                },
+                LogicalAddress::Broadcast
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn test_wake_ignores_initial_nack() {
+        let test = setup_basic_test().await.unwrap();
+        test.dev
+            .lock()
+            .await
+            .queue_tx_error(Error::TxError(TxError::Nack))
+            .await;
+
+        let interface: InterfaceRef<CecDevice> = test
+            .connection
+            .object_server()
+            .interface("/com/steampowered/CecDaemon1/Devices/Null")
+            .await
+            .unwrap();
+        {
+            let dev = interface.get_mut().await;
+            dev.send_system_message(SystemMessage::Wake {
+                wake_tv: true,
+                from_standby: false,
+            })
+            .await
+            .unwrap();
+        }
+
+        assert_eq!(
+            rx_message(&test.dev).await.unwrap(),
+            (
+                Message::ActiveSource {
+                    address: PhysicalAddress::from(0x1000)
                 },
                 LogicalAddress::Broadcast
             )

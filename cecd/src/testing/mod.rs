@@ -53,6 +53,7 @@ struct DeviceState {
     osd_name: BufferOperand,
     vendor_id: Option<VendorId>,
     tx_queue: VecDeque<(Message, LogicalAddress)>,
+    tx_errors: VecDeque<Error>,
     rx_queue: VecDeque<Envelope>,
     rx_empty: Vec<Arc<Notify>>,
     sequence: u32,
@@ -97,6 +98,7 @@ impl AsyncDevice {
                 osd_name: BufferOperand::default(),
                 vendor_id: None,
                 tx_queue: VecDeque::new(),
+                tx_errors: VecDeque::new(),
                 rx_queue: VecDeque::new(),
                 rx_empty: Vec::new(),
                 sequence: 1,
@@ -159,6 +161,10 @@ impl AsyncDevice {
         let notify = Arc::new(Notify::new());
         state.rx_empty.push(notify.clone());
         Some(notify)
+    }
+
+    pub(crate) async fn queue_tx_error(&self, error: Error) {
+        self.state.write().await.tx_errors.push_back(error);
     }
 
     pub(crate) async fn dequeue_tx_message(&self) -> Option<(Message, LogicalAddress)> {
@@ -310,6 +316,9 @@ impl AsyncDevice {
         }
         if state.initiator == InitiatorMode::Disabled {
             return Err(Error::InvalidData);
+        }
+        if let Some(error) = state.tx_errors.pop_front() {
+            return Err(error);
         }
         state.tx_queue.push_back((*message, destination));
         let seq = state.sequence;

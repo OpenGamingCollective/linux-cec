@@ -536,12 +536,15 @@ impl CecDevice {
             Ok(phys_addr) => Some(PhysicalAddress::from(phys_addr)),
             Err(_) => None,
         };
-        Ok(self
-            .device
-            .lock()
-            .await
-            .set_active_source(phys_addr)
-            .await?)
+        let active = {
+            let device = self.device.lock().await;
+            let this_phys_addr = device.get_physical_address().await?;
+            device.set_active_source(phys_addr).await?;
+            phys_addr.map(|addr| addr == this_phys_addr).unwrap_or(true)
+        };
+        self.send_system_message(SystemMessage::SetActive(active))
+            .await?;
+        Ok(())
     }
 
     async fn wake(&self) -> Result<()> {
@@ -555,7 +558,12 @@ impl CecDevice {
 
     async fn standby(&self, target: u8) -> Result<()> {
         let target = LogicalAddress::try_from_primitive(target)?;
-        Ok(self.device.lock().await.standby(target).await?)
+        self.device.lock().await.standby(target).await?;
+        if matches!(target, LogicalAddress::Tv | LogicalAddress::Broadcast) {
+            self.send_system_message(SystemMessage::SetActive(false))
+                .await?;
+        }
+        Ok(())
     }
 
     async fn press_user_control(&mut self, button: &[u8], target: u8) -> Result<()> {

@@ -813,12 +813,21 @@ impl Device {
                     pin: Pin::Power5V,
                     state: PinState::High,
                 })),
-                _ => return Err(Error::InvalidData),
+                ev_type => {
+                    #[cfg(feature = "tracing")]
+                    warn!("Ignoring unknown CEC event type {ev_type}");
+                }
             }
         }
 
         if status.got_message() {
-            results.push(PollResult::Message(self.rx_message(Timeout::from_ms(1))?));
+            match self.rx_message(Timeout::from_ms(1)) {
+                Ok(envelope) => results.push(PollResult::Message(envelope)),
+                Err(e) => {
+                    #[cfg(feature = "tracing")]
+                    warn!("Dropping unparseable incoming CEC message: {e}");
+                }
+            }
         }
 
         Ok(results)
