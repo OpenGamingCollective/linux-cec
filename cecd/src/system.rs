@@ -45,6 +45,7 @@ pub(crate) struct System {
     pub connection: Connection,
     pub channel: Sender<SystemMessage>,
     system_bus: Connection,
+    inhibit_fd: Option<zbus::zvariant::OwnedFd>,
     token: CancellationToken,
     devs: HashMap<PathBuf, CancellationToken>,
 
@@ -61,6 +62,14 @@ trait LoginManager {
     fn prepare_for_sleep(&self, sleep: bool) -> Result<()>;
 
     fn suspend(&self, interactive: bool) -> Result<()>;
+
+    fn inhibit(
+        &self,
+        what: &str,
+        who: &str,
+        why: &str,
+        mode: &str,
+    ) -> Result<zbus::zvariant::OwnedFd>;
 }
 
 #[derive(Debug, Clone)]
@@ -188,11 +197,20 @@ impl System {
             _ => String::from("CEC Device"),
         };
 
+        let login_manager = LoginManagerProxy::new(&system_bus).await?;
+
+        let inhibit_fd = login_manager
+            .inhibit("sleep", "cecd", "Put TV to sleep", "delay")
+            .await
+            .inspect_err(|e| warn!("Could not register to delay suspend: {e}"))
+            .ok();
+
         Ok(System {
             osd_name,
             config: Config::default(),
             connection,
             system_bus,
+            inhibit_fd,
             token,
             devs: HashMap::new(),
             channel,
@@ -521,6 +539,13 @@ impl SystemHandle {
                         from_standby: true,
                     })
                     .await;
+
+                // Reacquire sleep delay inhbitor lock
+                self.0.lock().await.inhibit_fd = login_manager
+                    .inhibit("sleep", "cecd", "Put TV to sleep", "delay")
+                    .await
+                    .inspect_err(|e| warn!("Could not register to delay suspend: {e}"))
+                    .ok();
             } else if sleep {
                 let standby_tv = system.config.suspend_tv;
                 debug!(
@@ -537,6 +562,9 @@ impl SystemHandle {
                         force: false,
                     })
                     .await;
+
+                // Close the fd, release the lock
+                self.0.lock().await.inhibit_fd.take();
             }
         }
     }
