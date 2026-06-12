@@ -48,6 +48,7 @@ pub(crate) struct System {
     inhibit_fd: Option<zbus::zvariant::OwnedFd>,
     token: CancellationToken,
     devs: HashMap<PathBuf, CancellationToken>,
+    standby: bool,
 
     message_handlers: HashMap<u8, MessageHandlerHandle>,
 }
@@ -215,6 +216,7 @@ impl System {
             devs: HashMap::new(),
             channel,
             config_path,
+            standby: false,
             message_handlers: HashMap::new(),
         })
     }
@@ -528,6 +530,7 @@ impl SystemHandle {
             };
             let mut system = self.lock().await;
             if !sleep {
+                system.standby = false;
                 let wake_tv = system.config.wake_tv;
                 debug!(
                     "Woke from standby. {} TV.",
@@ -546,15 +549,12 @@ impl SystemHandle {
                     .await
                     .inspect_err(|e| warn!("Could not register to delay suspend: {e}"))
                     .ok();
-            } else if sleep {
-                let standby_tv = system.config.suspend_tv;
+            } else {
+                // Don't attempt to put the TV to sleep if it's already putting us to sleep
+                let standby_tv = system.config.suspend_tv && !system.standby;
                 debug!(
                     "Entering standby. {} TV in standby.",
-                    if standby_tv {
-                        "Putting "
-                    } else {
-                        "Not putting"
-                    }
+                    if standby_tv { "Putting" } else { "Not putting" }
                 );
                 system
                     .send_message(SystemMessage::Standby {
@@ -563,6 +563,8 @@ impl SystemHandle {
                     })
                     .await;
 
+                system.standby = true;
+
                 // Close the fd, release the lock
                 system.inhibit_fd.take();
             }
@@ -570,6 +572,14 @@ impl SystemHandle {
     }
 
     pub(crate) async fn suspend(&self) -> Result<()> {
+        {
+            let mut system = self.lock().await;
+            if system.standby {
+                return Ok(());
+            }
+            system.standby = true;
+        }
+
         let login_manager = LoginManagerProxy::new(&self.lock().await.system_bus).await?;
         login_manager.suspend(false).await
     }
