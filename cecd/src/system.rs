@@ -541,7 +541,7 @@ impl SystemHandle {
                     .await;
 
                 // Reacquire sleep delay inhbitor lock
-                self.0.lock().await.inhibit_fd = login_manager
+                system.inhibit_fd = login_manager
                     .inhibit("sleep", "cecd", "Put TV to sleep", "delay")
                     .await
                     .inspect_err(|e| warn!("Could not register to delay suspend: {e}"))
@@ -564,7 +564,7 @@ impl SystemHandle {
                     .await;
 
                 // Close the fd, release the lock
-                self.0.lock().await.inhibit_fd.take();
+                system.inhibit_fd.take();
             }
         }
     }
