@@ -31,7 +31,7 @@ use std::path::Path;
 use std::str::FromStr;
 use tinyvec::ArrayVec;
 #[cfg(feature = "tracing")]
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 pub use linux_cec_sys::structs::CEC_CAP as Capabilities;
 pub use nix::poll::PollTimeout;
@@ -144,7 +144,7 @@ impl TryFrom<cec_msg> for Envelope {
             sequence,
         };
         #[cfg(feature = "tracing")]
-        debug!("Got message {envelope:#?}");
+        trace!("Got message {envelope:?}");
         Ok(envelope)
     }
 }
@@ -691,8 +691,8 @@ impl Device {
         raw_message.reply = reply.into();
         raw_message.timeout = timeout.as_ms();
         #[cfg(feature = "tracing")]
-        debug!(
-            "Sending message {message:#?} to {destination} ({:x})",
+        trace!(
+            "Sending message {message:?} to {destination} ({:x})",
             destination as u8
         );
         self.tx_raw_message(&mut raw_message)?;
@@ -728,7 +728,7 @@ impl Device {
     pub fn poll_address(&self, destination: LogicalAddress) -> Result<()> {
         let mut raw_message = cec_msg::new(self.tx_logical_address.into(), destination.into());
         #[cfg(feature = "tracing")]
-        debug!("Sending poll to {destination} ({:x})", destination as u8);
+        trace!("Sending poll to {destination} ({:x})", destination as u8);
         self.tx_raw_message(&mut raw_message)?;
         if !raw_message.tx_status.contains(CEC_TX_STATUS::OK) {
             #[cfg(feature = "tracing")]
