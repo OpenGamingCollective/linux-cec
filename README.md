@@ -85,6 +85,9 @@ The configuration files are stored in [TOML format](https://toml.io/en/), with t
 - `suspend_tv`: Should cecd attempt to suspend the TV when the device is suspended? Defaults to false.
 - `allow_standby`: Should cecd attempt to suspend when receiving a Standby command? Defaults to false.
 - `uinput`: Should uinput mappings be enabled. Defaults to true.
+- `request_active_source`: Should cecd attempt to determine if it's the active source when it wakes up or starts. In
+  theory we should always have this enabled, but due to shortcomings of the HDMI-CEC protocol, it is unreliable and
+  can erroneously determine we're active when we're not. Defaults to true.
 
 #### UI Commands
 

@@ -211,6 +211,12 @@ impl CecConfig {
                 warn!("Failed to emit Uinput changed: {e}");
             }
         }
+
+        if self.cached_config.request_active_source != old_config.request_active_source {
+            if let Err(e) = self.request_active_source_changed(emitter).await {
+                warn!("Failed to emit RequestActiveSource changed: {e}");
+            }
+        }
     }
 }
 
@@ -262,6 +268,11 @@ impl CecConfig {
     #[zbus(property)]
     pub async fn uinput(&self) -> bool {
         self.cached_config.uinput
+    }
+
+    #[zbus(property)]
+    pub async fn request_active_source(&self) -> bool {
+        self.cached_config.request_active_source
     }
 
     pub async fn reload(&self) -> Result<()> {

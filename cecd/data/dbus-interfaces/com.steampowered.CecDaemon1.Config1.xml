@@ -70,6 +70,13 @@
     <property name="DisableUinput" type="b" access="read"/>
 
     <!--
+        RequestActiveSource:
+
+        If the daemon is configured to request the active source when it starts or wakes up.
+    -->
+    <property name="RequestActiveSource" type="b" access="read"/>
+
+    <!--
         Reload:
 
         Reload the configuration from disk

@@ -87,6 +87,12 @@ pub(crate) struct Config {
     /// Should uinput mappings be enabled. Defaults to true.
     #[serde(default = "de_true")]
     pub uinput: bool,
+    /// Should cecd attempt to determine if it's the active source when it wakes up or starts.
+    /// In theory we should always have this enabled, but due to shortcomings of the HDMI-CEC
+    /// protocol, it is unreliable and can erroneously determine we're active when we're not.
+    /// Defaults to true.
+    #[serde(default = "de_true")]
+    pub request_active_source: bool,
 }
 
 #[derive(Debug)]

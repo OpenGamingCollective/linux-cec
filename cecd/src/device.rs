@@ -82,6 +82,7 @@ impl DeviceTask {
         Opcode::RoutingChange,
         Opcode::RequestActiveSource,
         Opcode::FeatureAbort,
+        Opcode::ActiveSource,
     ];
 
     pub async fn new(
@@ -132,6 +133,10 @@ impl DeviceTask {
     pub async fn run(mut self) -> Result<()> {
         // On startup, we should try to figure out if there's an audio system attached
         self.query_audio_system();
+        if self.system.lock().await.config.request_active_source {
+            self.with_logical_address(Box::new(|this| Box::new(this.pending_activate())))
+                .await;
+        }
         loop {
             select! {
                 status = self.poller.poll(Duration::from_secs(2).try_into().unwrap()) => {
@@ -254,6 +259,12 @@ impl DeviceTask {
                             }
                         }
                         self.query_audio_system();
+                        if self.system.lock().await.config.request_active_source {
+                            self.with_logical_address(Box::new(|this| {
+                                Box::new(this.pending_activate())
+                            }))
+                            .await;
+                        }
                     }
                 } else if log_addrs.is_empty() && phys_addr != 0xFFFF && self.log_addr_try > 0 {
                     info!("Did not get logical address, retrying registration");
@@ -357,6 +368,11 @@ impl DeviceTask {
                     self.set_active(false).await?;
                     None
                 }
+            }
+            MessageData::Valid(Message::ActiveSource { address }) => {
+                let this_address = self.device.lock().await.get_physical_address().await?;
+                self.set_active(address == this_address).await?;
+                None
             }
             MessageData::Valid(Message::Standby)
                 if self.system.lock().await.config.allow_standby =>
@@ -500,6 +516,13 @@ impl DeviceTask {
                         })
                     }))
                     .await;
+
+                    if self.system.lock().await.config.request_active_source {
+                        self.with_logical_address(Box::new(|this| {
+                            Box::new(this.pending_activate())
+                        }))
+                        .await;
+                    }
                 }
                 if wake_tv {
                     self.with_logical_address(Box::new(|task| {
@@ -594,6 +617,31 @@ impl DeviceTask {
             iface.cached_active = active;
             iface.active_changed(emitter).await?;
         }
+        Ok(())
+    }
+
+    async fn pending_activate(&mut self) -> Result<()> {
+        let device = self.device.clone();
+        spawn(async move {
+            let device = device.lock().await;
+            if device
+                .get_logical_addresses()
+                .await
+                .unwrap_or_default()
+                .is_empty()
+            {
+                return;
+            }
+            if let Err(e) = device
+                .tx_message(&Message::RequestActiveSource, LogicalAddress::Broadcast)
+                .await
+            {
+                if !matches!(e, Error::TxError(TxError::Timeout)) {
+                    info!("Couldn't query active source: {e}");
+                }
+            }
+        });
+        self.set_active(true).await?;
         Ok(())
     }
 
