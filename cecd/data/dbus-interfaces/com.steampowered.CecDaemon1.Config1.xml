@@ -2,85 +2,84 @@
  "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <node>
   <!--
-      com.steampowered.CecDaemon1.Config1
-      @short_description: The configuration of the daemon, for remote querying.
-
+    com.steampowered.CecDaemon1.Config1
+    @short_description: The configuration of the daemon, for remote querying.
   -->
   <interface name="com.steampowered.CecDaemon1.Config1">
     <!--
-        OsdName:
+      OsdName:
 
-        The configured OSD name. If no OSD name is configured, this value will
-		be an empty string.
+      The configured OSD name. If no OSD name is configured, this value will
+      be an empty string.
     -->
     <property name="OsdName" type="s" access="read"/>
 
     <!--
-        VendorId:
+      VendorId:
 
-        The configured vendor ID. If no vendor ID is configured, this value
-        will be negative.
+      The configured vendor ID. If no vendor ID is configured, this value
+      will be negative.
     -->
     <property name="VendorId" type="i" access="read"/>
 
     <!--
-        LogicalAddress:
+      LogicalAddress:
 
-        The configured logical address type.
+      The configured logical address type.
     -->
     <property name="LogicalAddress" type="y" access="read"/>
 
     <!--
-        Mappings:
+      Mappings:
 
-        The configured UI command mappings.
+      The configured UI command mappings.
     -->
     <property name="Mappings" type="a(ayq)" access="read"/>
 
     <!--
-        WakeTv:
+      WakeTv:
 
-        If the daemon is configured to wake the TV when this device comes back
-		up from suspend.
+      If the daemon is configured to wake the TV when this device comes back
+      up from suspend.
     -->
     <property name="WakeTv" type="b" access="read"/>
 
     <!--
-        SuspendTv:
+      SuspendTv:
 
-        If the daemon is configured to put the TV into standby when this device
-		enters suspend.
+      If the daemon is configured to put the TV into standby when this device
+      enters suspend.
     -->
     <property name="SuspendTv" type="b" access="read"/>
 
     <!--
-        AllowStandby:
+      AllowStandby:
 
-        If the daemon is configured to suspend the device when the TV enters
-		standby.
+      If the daemon is configured to suspend the device when the TV enters
+      standby.
     -->
     <property name="AllowStandby" type="b" access="read"/>
 
     <!--
-        Uinput:
+      Uinput:
 
-        If the daemon is configured to create a uinput device to relay UI
-        commands.
+      If the daemon is configured to create a uinput device to relay UI
+      commands.
     -->
     <property name="DisableUinput" type="b" access="read"/>
 
     <!--
-        RequestActiveSource:
+      RequestActiveSource:
 
-        If the daemon is configured to request the active source when it starts
-        or wakes up.
+      If the daemon is configured to request the active source when it starts
+      or wakes up.
     -->
     <property name="RequestActiveSource" type="b" access="read"/>
 
     <!--
-        Reload:
+      Reload:
 
-        Reload the configuration from disk
+      Reload the configuration from disk
     -->
     <method name="Reload">
     </method>
