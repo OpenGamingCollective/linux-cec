@@ -34,6 +34,7 @@ use crate::{ArcDevice, AsyncDevicePoller};
 const LOG_ADDR_RETRIES: i32 = 20;
 const WAKE_TRIES: i32 = 2;
 const WAKE_DELAY: Duration = Duration::from_millis(1000);
+const REPLY_RETRIES: i32 = 4;
 
 type CallbackFut<'a> = Box<dyn Future<Output = Result<()>> + Send + 'a>;
 type Callback = dyn for<'a> FnOnce(&'a mut DeviceTask) -> CallbackFut<'a> + Send;
@@ -444,7 +445,16 @@ impl DeviceTask {
         };
 
         if let Some((reply, address)) = reply {
-            self.device.lock().await.tx_message(&reply, address).await?;
+            for i in 0..REPLY_RETRIES {
+                let Err(err) = self.device.lock().await.tx_message(&reply, address).await else {
+                    break;
+                };
+                if i == REPLY_RETRIES - 1
+                    || !matches!(err, Error::TxError(TxError::UnknownError | TxError::Aborted))
+                {
+                    return Err(err.into());
+                }
+            }
         }
         Ok(())
     }
