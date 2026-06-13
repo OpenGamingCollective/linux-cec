@@ -62,10 +62,10 @@
     <property name="AllowStandby" type="b" access="read"/>
 
     <!--
-        DisableUinput:
+        Uinput:
 
-        If the daemon is configured to disable creating a uinput device to
-		relay UI commands.
+        If the daemon is configured to create a uinput device to relay UI
+        commands.
     -->
     <property name="DisableUinput" type="b" access="read"/>
 
