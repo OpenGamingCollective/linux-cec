@@ -929,4 +929,13 @@ mod test {
 
         assert_eq!(config_proxy.uinput().await.unwrap(), config.uinput);
     }
+
+    #[tokio::test]
+    async fn test_request_active_source_config_readout() {
+        let mut config = Config::default();
+        config.request_active_source = !config.request_active_source;
+        let (_test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        assert_eq!(config_proxy.request_active_source().await.unwrap(), config.request_active_source);
+    }
 }
