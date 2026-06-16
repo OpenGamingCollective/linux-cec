@@ -450,7 +450,10 @@ impl DeviceTask {
                     break;
                 };
                 if i == REPLY_RETRIES - 1
-                    || !matches!(err, Error::TxError(TxError::UnknownError | TxError::Aborted))
+                    || !matches!(
+                        err,
+                        Error::TxError(TxError::UnknownError | TxError::Aborted)
+                    )
                 {
                     return Err(err.into());
                 }
