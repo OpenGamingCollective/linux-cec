@@ -742,7 +742,7 @@ mod test {
     use super::*;
 
     use crate::system::System;
-    use crate::testing::{setup_dbus_test, DBusTest};
+    use crate::testing::{setup_dbus_test, setup_basic_test, DBusTest};
     use cecd_proxy::Config1Proxy;
     use input_linux::Key;
     use linux_cec::device::Capabilities;
@@ -937,5 +937,80 @@ mod test {
         let (_test, config_proxy) = setup_config_test(&config).await.unwrap();
 
         assert_eq!(config_proxy.request_active_source().await.unwrap(), config.request_active_source);
+    }
+
+    #[tokio::test]
+    async fn test_volume_up() {
+        let test = setup_basic_test().await.unwrap();
+        test.proxy
+            .volume_up(LogicalAddress::Tv.into())
+            .await
+            .unwrap();
+        test.dev.lock().await.key_repeat.notify_one();
+
+        assert_eq!(
+            test.dev.lock().await.dequeue_tx_message().await,
+            Some((
+                Message::UserControlPressed {
+                    ui_command: UiCommand::VolumeUp
+                },
+                LogicalAddress::Tv
+            ))
+        );
+        assert_eq!(
+            test.dev.lock().await.dequeue_tx_message().await,
+            Some((Message::UserControlReleased {}, LogicalAddress::Tv))
+        );
+        assert!(test.dev.lock().await.dequeue_tx_message().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_volume_down() {
+        let test = setup_basic_test().await.unwrap();
+        test.proxy
+            .volume_down(LogicalAddress::Tv.into())
+            .await
+            .unwrap();
+        test.dev.lock().await.key_repeat.notify_one();
+
+        assert_eq!(
+            test.dev.lock().await.dequeue_tx_message().await,
+            Some((
+                Message::UserControlPressed {
+                    ui_command: UiCommand::VolumeDown
+                },
+                LogicalAddress::Tv
+            ))
+        );
+        assert_eq!(
+            test.dev.lock().await.dequeue_tx_message().await,
+            Some((Message::UserControlReleased {}, LogicalAddress::Tv))
+        );
+        assert!(test.dev.lock().await.dequeue_tx_message().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_mute() {
+        let test = setup_basic_test().await.unwrap();
+        test.proxy
+            .mute(LogicalAddress::Tv.into())
+            .await
+            .unwrap();
+        test.dev.lock().await.key_repeat.notify_one();
+
+        assert_eq!(
+            test.dev.lock().await.dequeue_tx_message().await,
+            Some((
+                Message::UserControlPressed {
+                    ui_command: UiCommand::Mute
+                },
+                LogicalAddress::Tv
+            ))
+        );
+        assert_eq!(
+            test.dev.lock().await.dequeue_tx_message().await,
+            Some((Message::UserControlReleased {}, LogicalAddress::Tv))
+        );
+        assert!(test.dev.lock().await.dequeue_tx_message().await.is_none());
     }
 }

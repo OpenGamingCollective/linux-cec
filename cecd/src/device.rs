@@ -905,38 +905,7 @@ mod test {
     use tokio_stream::StreamExt;
 
     use crate::config::Config;
-    use crate::testing::{setup_dbus_test, wait_timeout, DBusTest};
-
-    async fn rx_message(dev: &ArcDevice) -> Option<(Message, LogicalAddress)> {
-        for _ in 0..100 {
-            let Some(message) = dev.lock().await.dequeue_tx_message().await else {
-                sleep(Duration::from_millis(1)).await;
-                continue;
-            };
-            return Some(message);
-        }
-        None
-    }
-
-    async fn tx_message(dev: &ArcDevice, message: Message, initiator: LogicalAddress) {
-        let notify = dev.lock().await.send_rx_message(message, initiator).await;
-        notify.notified().await;
-    }
-
-    async fn setup_basic_test() -> Result<DBusTest<'static>> {
-        async fn cb(dev: ArcDevice) -> anyhow::Result<()> {
-            let mut dev = dev.lock().await;
-            dev.set_caps(Capabilities::LOG_ADDRS | Capabilities::TRANSMIT);
-            dev.set_phys_addr(PhysicalAddress::from(0x1000)).await;
-            Ok(())
-        }
-        let config = Config {
-            uinput: false,
-            logical_address: LogicalAddressType::Playback,
-            ..Config::default()
-        };
-        setup_dbus_test(cb, Some(config)).await
-    }
+    use crate::testing::{setup_basic_test, setup_dbus_test, tx_message, rx_message, wait_timeout};
 
     #[tokio::test]
     async fn test_tx_basic() {
