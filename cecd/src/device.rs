@@ -905,7 +905,7 @@ mod test {
     use tokio_stream::StreamExt;
 
     use crate::config::Config;
-    use crate::testing::{setup_basic_test, setup_dbus_test, tx_message, rx_message, wait_timeout};
+    use crate::testing::{rx_message, setup_basic_test, setup_dbus_test, tx_message, wait_timeout};
 
     #[tokio::test]
     async fn test_tx_basic() {

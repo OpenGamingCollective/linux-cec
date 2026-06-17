@@ -742,7 +742,7 @@ mod test {
     use super::*;
 
     use crate::system::System;
-    use crate::testing::{setup_dbus_test, setup_basic_test, DBusTest};
+    use crate::testing::{setup_basic_test, setup_dbus_test, DBusTest};
     use cecd_proxy::Config1Proxy;
     use input_linux::Key;
     use linux_cec::device::Capabilities;
@@ -936,7 +936,10 @@ mod test {
         config.request_active_source = !config.request_active_source;
         let (_test, config_proxy) = setup_config_test(&config).await.unwrap();
 
-        assert_eq!(config_proxy.request_active_source().await.unwrap(), config.request_active_source);
+        assert_eq!(
+            config_proxy.request_active_source().await.unwrap(),
+            config.request_active_source
+        );
     }
 
     #[tokio::test]
@@ -992,10 +995,7 @@ mod test {
     #[tokio::test]
     async fn test_mute() {
         let test = setup_basic_test().await.unwrap();
-        test.proxy
-            .mute(LogicalAddress::Tv.into())
-            .await
-            .unwrap();
+        test.proxy.mute(LogicalAddress::Tv.into()).await.unwrap();
         test.dev.lock().await.key_repeat.notify_one();
 
         assert_eq!(
