@@ -748,6 +748,7 @@ mod test {
     use linux_cec::device::Capabilities;
     use linux_cec::VendorId;
     use nix::unistd::gethostname;
+    use tokio_stream::StreamExt;
 
     async fn setup_config_test(
         config: &Config,
@@ -842,6 +843,31 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_osd_name_config_reconfig() {
+        let config = Config {
+            osd_name: Some(String::from("CEC2")),
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_osd_name_changed().await;
+        test.system.lock().await.config.osd_name = Some(String::from("CEC3"));
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(msg.get().await.unwrap(), "CEC3");
+    }
+
+    #[tokio::test]
     async fn test_vendor_id_config_readout() {
         let config = Config {
             vendor_id: Some(VendorId([0x12, 0x34, 0x56])),
@@ -852,6 +878,34 @@ mod test {
         assert_eq!(
             config_proxy.vendor_id().await.unwrap(),
             config.vendor_id.map(Into::<i32>::into).unwrap_or(-1)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vendor_id_config_reconfig() {
+        let config = Config {
+            vendor_id: Some(VendorId([0x12, 0x34, 0x56])),
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_vendor_id_changed().await;
+        test.system.lock().await.config.vendor_id = Some(VendorId([0x56, 0x34, 0x12]));
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(
+            msg.get().await.unwrap(),
+            VendorId([0x56, 0x34, 0x12]).into()
         );
     }
 
@@ -867,6 +921,31 @@ mod test {
             config_proxy.logical_address().await.unwrap(),
             config.logical_address.into()
         );
+    }
+
+    #[tokio::test]
+    async fn test_logical_address_config_reconfig() {
+        let config = Config {
+            logical_address: LogicalAddressType::AudioSystem,
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_logical_address_changed().await;
+        test.system.lock().await.config.logical_address = LogicalAddressType::Record;
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(msg.get().await.unwrap(), LogicalAddressType::Record.into());
     }
 
     #[tokio::test]
@@ -901,12 +980,62 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_wake_tv_config_reconfig() {
+        let config = Config {
+            wake_tv: false,
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_wake_tv_changed().await;
+        test.system.lock().await.config.wake_tv = true;
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(msg.get().await.unwrap(), true);
+    }
+
+    #[tokio::test]
     async fn test_suspend_tv_config_readout() {
         let mut config = Config::default();
         config.suspend_tv = !config.suspend_tv;
         let (_test, config_proxy) = setup_config_test(&config).await.unwrap();
 
         assert_eq!(config_proxy.suspend_tv().await.unwrap(), config.suspend_tv);
+    }
+
+    #[tokio::test]
+    async fn test_suspend_tv_config_reconfig() {
+        let config = Config {
+            suspend_tv: false,
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_suspend_tv_changed().await;
+        test.system.lock().await.config.suspend_tv = true;
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(msg.get().await.unwrap(), true);
     }
 
     #[tokio::test]
@@ -922,12 +1051,62 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_allow_standby_config_reconfig() {
+        let config = Config {
+            allow_standby: false,
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_allow_standby_changed().await;
+        test.system.lock().await.config.allow_standby = true;
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(msg.get().await.unwrap(), true);
+    }
+
+    #[tokio::test]
     async fn test_uinput_config_readout() {
         let mut config = Config::default();
         config.uinput = !config.uinput;
         let (_test, config_proxy) = setup_config_test(&config).await.unwrap();
 
         assert_eq!(config_proxy.uinput().await.unwrap(), config.uinput);
+    }
+
+    #[tokio::test]
+    async fn test_uinput_config_reconfig() {
+        let config = Config {
+            uinput: false,
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_uinput_changed().await;
+        test.system.lock().await.config.uinput = true;
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(msg.get().await.unwrap(), true);
     }
 
     #[tokio::test]
@@ -940,6 +1119,31 @@ mod test {
             config_proxy.request_active_source().await.unwrap(),
             config.request_active_source
         );
+    }
+
+    #[tokio::test]
+    async fn test_request_active_source_config_reconfig() {
+        let config = Config {
+            request_active_source: false,
+            ..Config::default()
+        };
+        let (test, config_proxy) = setup_config_test(&config).await.unwrap();
+
+        let mut receiver = config_proxy.receive_request_active_source_changed().await;
+        test.system.lock().await.config.request_active_source = true;
+        let iface = test
+            .connection
+            .object_server()
+            .interface::<_, CecConfig>(format!("{PATH}/Daemon"))
+            .await
+            .unwrap();
+        iface
+            .get_mut()
+            .await
+            .reconfigure(iface.signal_emitter())
+            .await;
+        let msg = receiver.next().await.unwrap();
+        assert_eq!(msg.get().await.unwrap(), true);
     }
 
     #[tokio::test]
