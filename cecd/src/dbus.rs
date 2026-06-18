@@ -1001,7 +1001,7 @@ mod test {
             .reconfigure(iface.signal_emitter())
             .await;
         let msg = receiver.next().await.unwrap();
-        assert_eq!(msg.get().await.unwrap(), true);
+        assert!(msg.get().await.unwrap());
     }
 
     #[tokio::test]
@@ -1035,7 +1035,7 @@ mod test {
             .reconfigure(iface.signal_emitter())
             .await;
         let msg = receiver.next().await.unwrap();
-        assert_eq!(msg.get().await.unwrap(), true);
+        assert!(msg.get().await.unwrap());
     }
 
     #[tokio::test]
@@ -1072,7 +1072,7 @@ mod test {
             .reconfigure(iface.signal_emitter())
             .await;
         let msg = receiver.next().await.unwrap();
-        assert_eq!(msg.get().await.unwrap(), true);
+        assert!(msg.get().await.unwrap());
     }
 
     #[tokio::test]
@@ -1106,7 +1106,7 @@ mod test {
             .reconfigure(iface.signal_emitter())
             .await;
         let msg = receiver.next().await.unwrap();
-        assert_eq!(msg.get().await.unwrap(), true);
+        assert!(msg.get().await.unwrap());
     }
 
     #[tokio::test]
@@ -1143,7 +1143,7 @@ mod test {
             .reconfigure(iface.signal_emitter())
             .await;
         let msg = receiver.next().await.unwrap();
-        assert_eq!(msg.get().await.unwrap(), true);
+        assert!(msg.get().await.unwrap());
     }
 
     #[tokio::test]
