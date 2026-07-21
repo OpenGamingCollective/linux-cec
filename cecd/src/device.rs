@@ -551,11 +551,12 @@ impl DeviceTask {
             SystemMessage::Standby { standby_tv, force } => {
                 let device = self.device.lock().await;
                 let address = device.get_physical_address().await?;
-                device
-                    .tx_message(&Message::InactiveSource { address }, LogicalAddress::Tv)
-                    .await?;
                 if force || (self.active && standby_tv) {
                     device.standby(LogicalAddress::Tv).await?;
+                } else {
+                    device
+                        .tx_message(&Message::InactiveSource { address }, LogicalAddress::Tv)
+                        .await?;
                 }
                 Ok(())
             }
@@ -953,15 +954,6 @@ mod test {
         }
         assert_eq!(
             rx_message(&test.dev).await.unwrap(),
-            (
-                Message::InactiveSource {
-                    address: PhysicalAddress::from(0x1000)
-                },
-                LogicalAddress::Tv
-            )
-        );
-        assert_eq!(
-            rx_message(&test.dev).await.unwrap(),
             (Message::Standby {}, LogicalAddress::Tv)
         );
         assert!(rx_message(&test.dev).await.is_none());
@@ -1035,15 +1027,6 @@ mod test {
             .await
             .unwrap();
         }
-        assert_eq!(
-            rx_message(&test.dev).await.unwrap(),
-            (
-                Message::InactiveSource {
-                    address: PhysicalAddress::from(0x1000)
-                },
-                LogicalAddress::Tv
-            )
-        );
         assert_eq!(
             rx_message(&test.dev).await.unwrap(),
             (Message::Standby {}, LogicalAddress::Tv)
