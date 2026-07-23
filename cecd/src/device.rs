@@ -531,14 +531,13 @@ impl DeviceTask {
                         return;
                     }
                 }
-                Err(err) => {
-                    warn!("Failed to recover device after resume (attempt {attempt}): {err}")
-                }
+                Err(_) => {}
             }
             if attempt < RESUME_TRIES {
                 sleep(RESUME_DELAY).await;
             }
         }
+        warn!("Failed to recover device after resume ({RESUME_TRIES} attempts)");
     }
 
     async fn handle_system_message(&mut self, message: SystemMessage) -> Result<()> {
